@@ -1,0 +1,330 @@
+aws-enterprise-project/
+│
+├── python/
+│   ├── ec2_manager.py
+│   ├── s3_manager.py
+│   ├── rds_manager.py
+│   ├── cloudwatch.py
+│   ├── lambda_deploy.py
+│   ├── route53.py
+│   ├── autoscaling.py
+│   ├── vpc.py
+│   ├── iam.py
+│   └── cloudfront.py
+│
+├── nodejs/
+│   ├── ec2.js
+│   ├── s3.js
+│   ├── lambda.js
+│   ├── rds.js
+│   ├── iam.js
+│   ├── cloudwatch.js
+│   └── route53.js
+│
+├── apache/
+│   ├── httpd.conf
+│   ├── virtualhost.conf
+│   └── index.html
+│
+├── scripts/
+│   ├── deploy.sh
+│   ├── backup.sh
+│   └── monitoring.sh
+│
+└── package.json
+
+
+  `1. Amazon EC2
+Python (Boto3)
+import boto3
+
+ec2 = boto3.client("ec2")
+
+response = ec2.describe_instances()
+
+for reservation in response["Reservations"]:
+    for instance in reservation["Instances"]:
+        print(instance["InstanceId"], instance["State"]["Name"])
+Node.js
+const { EC2Client, DescribeInstancesCommand } =
+require("@aws-sdk/client-ec2");
+
+const client = new EC2Client({ region: "us-east-1" });
+
+async function listInstances() {
+    const data = await client.send(
+        new DescribeInstancesCommand({})
+    );
+
+    console.log(data.Reservations);
+}
+
+listInstances();
+2. Amazon S3
+Python
+import boto3
+
+s3=boto3.client("s3")
+
+s3.upload_file(
+"website.zip",
+"company-backup",
+"website.zip"
+)
+Node.js
+const {
+S3Client,
+PutObjectCommand
+}=require("@aws-sdk/client-s3");
+
+const fs=require("fs");
+
+const client=new S3Client({region:"us-east-1"});
+
+async function upload(){
+
+await client.send(
+
+new PutObjectCommand({
+
+Bucket:"company-backup",
+
+Key:"website.zip",
+
+Body:fs.readFileSync("website.zip")
+
+}));
+
+}
+
+upload();
+3. Amazon RDS
+Python
+import boto3
+
+rds=boto3.client("rds")
+
+print(rds.describe_db_instances())
+Node.js
+const {
+
+RDSClient,
+
+DescribeDBInstancesCommand
+
+}=require("@aws-sdk/client-rds");
+
+const client=new RDSClient({region:"us-east-1"});
+
+client.send(new DescribeDBInstancesCommand({}))
+
+.then(console.log);
+4. CloudWatch
+Python
+import boto3
+
+cw=boto3.client("cloudwatch")
+
+cw.put_metric_alarm(
+
+AlarmName="HighCPU",
+
+MetricName="CPUUtilization"
+
+)
+Node.js
+const {
+
+CloudWatchClient,
+
+ListMetricsCommand
+
+}=require("@aws-sdk/client-cloudwatch");
+
+const client=new CloudWatchClient({});
+
+client.send(new ListMetricsCommand({}))
+
+.then(console.log);
+5. IAM
+
+Python
+
+import boto3
+
+iam=boto3.client("iam")
+
+print(iam.list_users())
+
+Node.js
+
+const {
+
+IAMClient,
+
+ListUsersCommand
+
+}=require("@aws-sdk/client-iam");
+
+const client=new IAMClient({});
+
+client.send(new ListUsersCommand({}))
+
+.then(console.log);
+6. Lambda
+
+Python
+
+import boto3
+
+lambda_client=boto3.client("lambda")
+
+print(lambda_client.list_functions())
+
+Node.js
+
+const {
+
+LambdaClient,
+
+ListFunctionsCommand
+
+}=require("@aws-sdk/client-lambda");
+
+const client=new LambdaClient({});
+
+client.send(new ListFunctionsCommand({}))
+
+.then(console.log);
+7. Route 53
+
+Python
+
+import boto3
+
+route53=boto3.client("route53")
+
+print(route53.list_hosted_zones())
+8. CloudFront
+
+Python
+
+import boto3
+
+cf=boto3.client("cloudfront")
+
+print(cf.list_distributions())
+9. Auto Scaling
+
+Python
+
+import boto3
+
+asg=boto3.client("autoscaling")
+
+print(asg.describe_auto_scaling_groups())
+10. VPC
+
+Python
+
+import boto3
+
+ec2=boto3.client("ec2")
+
+print(ec2.describe_vpcs())
+11. EBS
+
+Python
+
+import boto3
+
+ec2=boto3.client("ec2")
+
+print(ec2.describe_volumes())
+12. EFS
+
+Python
+
+import boto3
+
+efs=boto3.client("efs")
+
+print(efs.describe_file_systems())
+13. Apache
+
+Install
+
+sudo yum install httpd -y
+
+sudo systemctl enable httpd
+
+sudo systemctl start httpd
+
+Virtual Host
+
+<VirtualHost *:80>
+
+DocumentRoot "/var/www/html"
+
+ServerName example.com
+
+ErrorLog logs/error_log
+
+CustomLog logs/access_log combined
+
+</VirtualHost>
+
+Simple HTML
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>AWS Multi-tier</title>
+</head>
+<body>
+
+<h1>Application Running</h1>
+
+</body>
+</html>
+14. AWS CLI Automation
+#!/bin/bash
+
+aws ec2 describe-instances
+
+aws s3 ls
+
+aws rds describe-db-instances
+
+aws cloudwatch list-metrics
+Real-world enterprise architecture
+Users
+   │
+Route 53
+   │
+CloudFront
+   │
+Application Load Balancer
+   │
+Auto Scaling Group (EC2)
+   │
+Apache + Node.js Application
+   │
+Amazon EFS (shared uploads)
+   │
+Amazon RDS (MySQL/PostgreSQL)
+   │
+Amazon S3 (backups/static assets)
+
+Monitoring:
+CloudWatch → Alarms → Lambda → SNS Notifications
+
+Automation:
+Python (Boto3)
+Node.js (AWS SDK)
+AWS CLI (Bash)
+Notes
+Python is the most widely used language for AWS automation because of the mature Boto3 SDK and extensive ecosystem.
+Node.js is commonly used for serverless functions, REST APIs, and backend services using the AWS SDK for JavaScript.
+Apache HTTP Server is a web server configured with configuration files (httpd.conf, virtual host files), not a scripting language. It serves web content and can reverse-proxy requests to applications written in Node.js, Python, Java, or other languages.
+Bash + AWS CLI remains a standard choice for deployment scripts, instance bootstrap (user-data), and CI/CD pipelines.    
