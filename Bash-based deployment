@@ -1,0 +1,2146 @@
+Bash-based deployment for a multi-tier application on AWS, below is a simple project structure that deploys:
+
+VPC
+Public and Private Subnets
+Internet Gateway
+NAT Gateway
+Security Groups
+EC2 Web Server (Apache)
+EC2 Application Server
+RDS MySQL Database
+
+The scripts use the AWS CLI.
+
+
+aws-multitier-deployment/
+│
+├── deploy.sh
+├── variables.sh
+├── network.sh
+├── security.sh
+├── ec2.sh
+├── rds.sh
+├── cleanup.sh
+└── userdata/
+    ├── web.sh
+    └── app.sh  // project structure
+
+#!/bin/bash
+
+REGION="us-east-1"
+
+VPC_CIDR="10.0.0.0/16"
+
+PUBLIC_SUBNET="10.0.1.0/24"
+PRIVATE_SUBNET="10.0.2.0/24"
+
+AMI="ami-0c02fb55956c7d316"
+
+INSTANCE_TYPE="t2.micro"
+
+KEY_NAME="my-key"
+
+DB_USERNAME="admin"
+DB_PASSWORD="Password123!"
+DB_NAME="mydb"                                                                               //variable.sh
+
+
+
+#!/bin/bash
+
+source variables.sh
+
+echo "Creating VPC..."
+
+VPC_ID=$(aws ec2 create-vpc \
+--cidr-block $VPC_CIDR \
+--query 'Vpc.VpcId' \
+--output text)
+
+echo "VPC: $VPC_ID"
+
+IGW_ID=$(aws ec2 create-internet-gateway \
+--query 'InternetGateway.InternetGatewayId' \
+--output text)
+
+aws ec2 attach-internet-gateway \
+--vpc-id $VPC_ID \
+--internet-gateway-id $IGW_ID
+
+PUBLIC_SUBNET_ID=$(aws ec2 create-subnet \
+--vpc-id $VPC_ID \
+--cidr-block $PUBLIC_SUBNET \
+--query 'Subnet.SubnetId' \
+--output text)
+
+PRIVATE_SUBNET_ID=$(aws ec2 create-subnet \
+--vpc-id $VPC_ID \
+--cidr-block $PRIVATE_SUBNET \
+--query 'Subnet.SubnetId' \
+--output text)
+
+echo "Done"                                                                    // network.sh
+
+#!/bin/bash
+
+source variables.sh
+
+WEB_SG=$(aws ec2 create-security-group \
+--group-name WebSG \
+--description "Web Security Group" \
+--vpc-id $VPC_ID \
+--query 'GroupId' \
+--output text)
+
+aws ec2 authorize-security-group-ingress \
+--group-id $WEB_SG \
+--protocol tcp \
+--port 80 \
+--cidr 0.0.0.0/0
+
+APP_SG=$(aws ec2 create-security-group \
+--group-name AppSG \
+--description "App Security Group" \
+--vpc-id $VPC_ID \
+--query 'GroupId' \
+--output text)
+
+DB_SG=$(aws ec2 create-security-group \
+--group-name DBSG \
+--description "Database Security Group" \
+--vpc-id $VPC_ID \
+--query 'GroupId' \
+--output text)
+
+echo "Security Groups Created" // security.sh
+
+#!/bin/bash
+
+yum update -y
+
+yum install httpd -y
+
+systemctl enable httpd
+
+systemctl start httpd
+
+echo "<h1>AWS Multi Tier Web Server</h1>" > /var/www/html/index.html // userdata web.sh
+
+#!/bin/bash
+
+yum update -y
+
+yum install java-17-amazon-corretto -y
+
+mkdir /opt/app                                                     // userdata/app.sh
+
+#!/bin/bash
+
+source variables.sh
+
+WEB_INSTANCE=$(aws ec2 run-instances \
+--image-id $AMI \
+--count 1 \
+--instance-type $INSTANCE_TYPE \
+--key-name $KEY_NAME \
+--subnet-id $PUBLIC_SUBNET_ID \
+--security-group-ids $WEB_SG \
+--user-data file://userdata/web.sh \
+--query 'Instances[0].InstanceId' \
+--output text)
+
+APP_INSTANCE=$(aws ec2 run-instances \
+--image-id $AMI \
+--count 1 \
+--instance-type $INSTANCE_TYPE \
+--key-name $KEY_NAME \
+--subnet-id $PRIVATE_SUBNET_ID \
+--security-group-ids $APP_SG \
+--user-data file://userdata/app.sh \
+--query 'Instances[0].InstanceId' \
+--output text)
+
+echo "Instances Created"                                               //ec2.sh
+
+
+#!/bin/bash
+
+source variables.sh
+
+aws rds create-db-instance \
+--db-instance-identifier mydb \
+--allocated-storage 20 \
+--db-instance-class db.t3.micro \
+--engine mysql \
+--master-username $DB_USERNAME \
+--master-user-password $DB_PASSWORD \
+--vpc-security-group-ids $DB_SG \
+--backup-retention-period 0 \
+--publicly-accessible false                                          //rds.sh
+
+
+
+#!/bin/bash
+
+chmod +x *.sh
+
+chmod +x userdata/*.sh
+
+echo "Deploying Network..."
+
+source network.sh
+
+echo "Deploying Security..."
+
+source security.sh
+
+echo "Launching EC2..."
+
+source ec2.sh
+
+echo "Creating Database..."
+
+source rds.sh
+
+echo "Deployment Complete"                            //deploy.sh
+
+
+#!/bin/bash
+
+aws ec2 terminate-instances --instance-ids $WEB_INSTANCE $APP_INSTANCE
+
+aws rds delete-db-instance \
+--db-instance-identifier mydb \
+--skip-final-snapshot                             //cleanup.sh
+
+
+chmod +x *.sh
+chmod +x userdata/*.sh
+
+./deploy.sh                                     //deployment
+
+                Internet
+                    |
+             Internet Gateway
+                    |
+          Public Subnet (Web Tier)
+          Apache + HTML + Nginx
+                    |
+              Private Subnet
+           Java/Spring Boot App
+                    |
+             Amazon RDS MySQL
+
+
+
+Production Improvements
+
+For a production-ready deployment, consider extending this solution with:
+
+An Amazon Web Services Application Load Balancer (ALB) in front of the web tier.
+EC2 Auto Scaling Groups for the web and application tiers.
+Multi-AZ subnets and RDS Multi-AZ for high availability.
+IAM roles instead of long-lived AWS access keys.
+AWS Systems Manager Session Manager instead of SSH access.
+Separate route tables for public and private subnets with a NAT Gateway for outbound internet access from private instances.
+AWS Secrets Manager or AWS Systems Manager Parameter Store for database credentials.
+CloudWatch logs, alarms, and monitoring.
+S3 for static assets and backups.
+HTTPS using AWS Certificate Manager with the ALB.
+Infrastructure as Code using CloudFormation or Terraform for easier maintenance and repeatable deployments.
+
+
+                    Users
+                      │
+              Route53 DNS
+                      │
+                CloudFront CDN
+                      │
+            Application Load Balancer
+                      │
+         Auto Scaling Group (Web Tier)
+      Apache / Nginx + PHP / NodeJS
+                      │
+          Auto Scaling Group (App Tier)
+           Spring Boot / Python API
+                      │
+              Amazon EFS (Shared Files)
+                      │
+              Amazon RDS MySQL
+                      │
+           Amazon S3 (Images & Backups)
+
+VPC
+├── Public Subnet-A
+├── Public Subnet-B
+├── Private App-A
+├── Private App-B
+├── Private DB-A
+└── Private DB-B
+
+Monitoring
+CloudWatch
+      │
+SNS Email Alerts
+
+Automation
+AWS CLI + Bash Scripts
+
+Security
+IAM Roles
+Security Groups
+NACL
+
+
+| AWS Service  | Purpose                   |
+| ------------ | ------------------------- |
+| EC2          | Web & Application Servers |
+| VPC          | Secure Network            |
+| S3           | Image Storage & Backup    |
+| EBS          | EC2 Storage               |
+| EFS          | Shared Storage            |
+| ALB          | Load Balancing            |
+| Auto Scaling | Scale EC2                 |
+| RDS          | MySQL Database            |
+| CloudWatch   | Monitoring                |
+| AWS CLI      | Automation                |
+| Route53      | DNS                       |
+| CloudFront   | CDN                       |
+| Lambda       | Automatic Backup          |
+| IAM          | Permissions               |
+
+
+aws-multitier-project/
+
+deploy.sh
+
+cleanup.sh
+
+variables.sh
+
+01-vpc.sh
+
+02-securitygroups.sh
+
+03-ec2.sh
+
+04-ebs.sh
+
+05-efs.sh
+
+06-rds.sh
+
+07-alb.sh
+
+08-autoscaling.sh
+
+09-s3.sh
+
+10-cloudfront.sh
+
+11-route53.sh
+
+12-cloudwatch.sh
+
+13-lambda.sh
+
+14-iam.sh
+
+userdata/
+     web.sh
+     app.sh
+
+lambda/
+     backup.py
+
+website/
+     index.html
+
+
+Module 1 — Amazon EC2
+Theory
+
+EC2 provides virtual servers.
+
+Features
+
+AMI
+Security Groups
+Elastic IP
+EBS
+Monitoring
+UserData
+Key Pair
+
+aws ec2 run-instances \
+--image-id ami-xxxxxxxx \
+--instance-type t2.micro \
+--security-group-ids sg-xxxx \
+--subnet-id subnet-xxxx \
+--key-name DevKey \
+--user-data file://userdata/web.sh   // bashscript
+
+VPC
+
+Internet Gateway
+
+Public Route Table
+
+Private Route Table
+
+NAT Gateway
+
+Public Subnet
+
+Private Subnet
+
+Network ACL
+
+Security Groups                            // module ec2 component
+
+aws ec2 create-vpc \
+--cidr-block 10.0.0.0/16                    //create vpc then subnet
+
+aws ec2 create-subnet \
+--vpc-id $VPC \
+--cidr-block 10.0.1.0/24                      // create subnet
+
+aws s3 mb s3://my-company-images             // create bucket
+
+
+
+aws s3api put-bucket-versioning \
+--bucket my-company-images \
+--versioning-configuration Status=Enabled    //enabling_version
+
+aws s3api put-bucket-lifecycle-configuration ...   // lifecycle
+
+
+aws ec2 create-volume \
+--size 20 \
+--availability-zone us-east-1a   //create_volume
+
+aws ec2 attach-volume
+aws ec2 create-snapshot
+
+
+aws efs create-file-system
+sudo mount -t efs fs-123:/ /efs
+
+Web1
+
+Web2
+
+App1
+
+App2
+
+
+Internet
+
+↓
+
+ALB
+
+↓
+
+EC2
+
+EC2
+
+EC2  //6 load balancer
+
+aws elbv2 create-load-balancer // auto scaling
+
+Minimum = 2
+
+Desired = 2
+
+Maximum = 6
+
+aws autoscaling put-scaling-policy  // 7 auto scaling
+
+MySQL
+
+Multi-AZ
+
+Backups
+
+Snapshots
+
+Monitoring   //amazon rds
+
+aws rds restore-db-instance-from-db-snapshot  
+
+aws cloudwatch put-metric-alarm
+
+aws cloudwatch put-dashboard
+
+example.com
+
+↓
+
+ALB
+
+aws route53 create-health-check
+
+Users
+
+↓
+
+Edge Location
+
+↓
+
+S3
+
+↓
+
+ALB
+
+CloudWatch Event
+
+↓
+
+Lambda
+
+↓
+
+RDS Snapshot
+
+↓
+
+S3 Backup
+
+import boto3
+
+rds = boto3.client('rds')
+
+rds.create_db_snapshot(
+DBSnapshotIdentifier='dailybackup',
+DBInstanceIdentifier='mydb')
+
+IAM Users
+
+IAM Groups
+
+IAM Roles
+
+IAM Policies
+
+{
+  "Version":"2012-10-17",
+  "Statement":[
+    {
+      "Effect":"Allow",
+      "Action":[
+        "s3:*"
+      ],
+      "Resource":"*"
+    }
+  ]
+}
+
+
+#!/bin/bash
+
+bash 01-vpc.sh
+
+bash 02-securitygroups.sh
+
+bash 03-ec2.sh
+
+bash 04-ebs.sh
+
+bash 05-efs.sh
+
+bash 06-rds.sh
+
+bash 07-alb.sh
+
+bash 08-autoscaling.sh
+
+bash 09-s3.sh
+
+bash 10-cloudfront.sh
+
+bash 11-route53.sh
+
+bash 12-cloudwatch.sh
+
+bash 13-lambda.sh
+
+bash 14-iam.sh
+
+echo "AWS Multi-tier Deployment Completed Successfully."
+
+
+aws-multitier-project/
+├── deploy.sh
+├── destroy.sh
+├── variables.sh
+├── scripts/
+│   ├── 01-vpc.sh
+│   ├── 02-securitygroups.sh
+│   ├── 03-ec2.sh
+│   ├── 04-ebs.sh
+│   ├── 05-efs.sh
+│   ├── 06-rds.sh
+│   ├── 07-alb.sh
+│   ├── 08-autoscaling.sh
+│   ├── 09-s3.sh
+│   ├── 10-cloudfront.sh
+│   ├── 11-route53.sh
+│   ├── 12-cloudwatch.sh
+│   ├── 13-lambda.sh
+│   └── 14-iam.sh
+├── userdata/
+│   ├── web.sh
+│   └── app.sh
+├── lambda/
+│   └── backup.py
+├── website/
+│   └── index.html
+└── docs/
+    ├── architecture.png
+    ├── deployment-guide.md
+    └── troubleshooting.md
+
+
+                    Internet
+                        │
+                 Application Load Balancer
+                        │
+        ┌───────────────┴───────────────┐
+        │                               │
+    Web Server 1                    Web Server 2
+     (Apache/Nginx)                 (Apache/Nginx)
+        │                               │
+        └───────────────┬───────────────┘
+                        │
+                 Application Server
+                  (Java / Python)
+                        │
+                  MySQL Database
+                     Amazon RDS
+
+Linux is installed on every EC2 instance.
+
+
+/home/ec2-user
+pwd
+ls
+ls-l
+ls-la
+cd/var/www/html    + cd...
+cd~
+mkdir project
+mkdir app logs backup
+cp index.html backup/
+cp -r website backup
+
+mv app.sh scripts/
+mv old.txt new.txt
+
+rm test.txt
+rm -rf logs/
+
+cd/var/www/html cp index.html /var/www/html/ systemctl restart httpd
+
+/
+-bin -boot -dev -etc -hoome -tmp -opt -usr -var
+
+ls-l
+-rwxr-xr--
+//ogo
+
+chmod 755 deploy.sh
+chmod +x deploy.sh
+
+sudo chown ec2-user deploy.sh
+sudo shown ec2-user:developers app.sh
+
+ln-s/var/www/html website
+
+mkdir /logs
+chmod 755 /logs
+chown ec2-user:ec2-user /logs
+
+sudo useradd developer for creating user
+
+sudo passwd developer
+sudo groupadd devtm
+
+sudo usermod -aG devteam developer
+
+sudo usermod -aG wheel developer
+
+cat/etc/passwd
+
+admin==developer-- tester--devops engineer
+
+1.check current directory
+2.fsm dile system mamngement
+3.ugm
+4.pm
+5.text e vim
+6 sa
+7. automation and shell scripting
+8. system monitoring
+
+
+
+
+
+
+
+
+
+
+3. User & Group Management
+
+Create user
+
+sudo useradd developer
+
+Set password
+
+sudo passwd developer
+
+Create group
+
+sudo groupadd devteam
+
+Add user
+
+sudo usermod -aG devteam developer
+
+Grant sudo
+
+sudo usermod -aG wheel developer
+
+View users
+
+cat /etc/passwd
+Real-Life
+Admin
+
+Developer
+
+Tester
+
+DevOps Engineer
+
+Each has separate permissions.
+
+#!/bin/bash
+
+echo "Updating"
+
+sudo yum update -y
+
+echo "Installing Apache"
+
+sudo yum install httpd -y
+
+sudo systemctl enable httpd
+
+sudo systemctl start httpd
+
+echo "Deployment Complete"
+
+chmod +x deploy.sh
+
+./deploy.sh _run
+
+NAME="AWS"
+
+echo $NAME
+
+for i in {1..5}
+
+do
+
+echo $i
+
+done
+
+if [ -f app.sh ]
+
+then
+
+echo "Exists"
+
+else
+
+echo "Not Found"
+
+fi
+
+install_httpd(){
+
+sudo yum install httpd -y
+
+}
+
+install_httpd ........
+
+crontab -e......
+0 2 * * * /home/ec2-user/backup.sh......
+
+
+#!/bin/bash
+
+DATE=$(date +%F)
+
+tar -czf backup-$DATE.tar.gz /var/www/html
+
+aws s3 cp backup-$DATE.tar.gz s3://company-backup/..................
+
+
+
+
+
+4. Process Management
+
+Running processes
+
+ps -ef
+
+Interactive monitoring
+
+top
+
+Improved monitoring (if installed)
+
+htop
+
+Kill process
+
+kill PID
+
+Force
+
+kill -9 PID
+
+Background process
+
+./deploy.sh &
+
+Jobs
+
+jobs
+
+Bring back
+
+fg
+Real-Life
+
+Restart Apache
+
+sudo systemctl restart httpd
+
+Find process
+
+ps -ef | grep httpd
+
+
+
+
+
+
+
+
+5. Text Editing with Vim
+
+Open
+
+vim app.sh
+
+Modes
+
+Normal Mode
+Insert Mode
+Visual Mode
+Command Mode
+
+Useful commands
+
+i
+
+Esc
+
+:w
+
+:q
+
+:wq
+
+:q!
+
+Search
+
+/database
+
+Replace
+
+:%s/old/new/g
+Real-Life
+
+Edit configuration
+
+sudo vim /etc/httpd/conf/httpd.conf
+
+6. System Administration
+
+Package Management
+
+Amazon Linux
+
+sudo yum update -y
+
+Ubuntu
+
+sudo apt update
+
+Install Apache
+
+sudo yum install httpd -y
+
+Services
+
+Start
+
+sudo systemctl start httpd
+
+Enable
+
+sudo systemctl enable httpd
+
+Status
+
+sudo systemctl status httpd
+
+Restart
+
+sudo systemctl restart httpd
+
+Networking
+
+IP Address
+
+ip addr
+
+Routing
+
+ip route
+
+Test connectivity
+
+ping google.com
+
+Ports
+
+ss -tuln
+Real-Life
+
+Deploy Apache
+
+sudo yum install httpd -y
+
+sudo systemctl enable httpd
+
+sudo systemctl start httpd
+
+
+
+
+
+
+
+
+8.top free-h df-h du-sh/var/log  iftop ps aux
+tail -f/var/log/process 
+tail -f/var/log/httpd/access_log
+
+
+
+// health_check_script
+
+
+#!/bin/bash
+
+echo "===== CPU ====="
+
+top -bn1 | head -5
+
+echo "===== MEMORY ====="
+
+free -h
+
+echo "===== DISK ====="
+
+df -h
+
+echo "===== SERVICES ====="
+
+systemctl status httpd --no-pager
+
+echo "===== NETWORK ====="
+
+ss -tuln
+
+
+Real-World Workflow for an AWS Multi-Tier Application
+Launch EC2 instances.
+
+Connect using SSH:
+
+ssh -i key.pem ec2-user@<public-ip>
+Update the operating system and install required packages (httpd, git, awscli).
+Create application directories and set correct ownership and permissions.
+
+Clone the application from Git:
+
+git clone https://github.com/company/app.git
+Configure the application using vim (for example, database connection settings).
+Start and enable services with systemctl.
+Schedule automated backups or maintenance using cron.
+Monitor CPU, memory, disk, logs, and services using Linux tools and integrate with Amazon CloudWatch.
+Troubleshoot issues by inspecting logs, checking processes, verifying network connectivity, and ensuring sufficient system resources.
+
+These Linux administration skills form the operational foundation for deploying and managing production workloads on AWS, especially when combined with services such as EC2, VPC,
+RDS, S3, Load Balancers, Auto Scaling, and CloudWatch.
+
+
+Yes. A real production environment uses **multiple scripting and programming languages together**, not just Bash. For example, a typical AWS multi-tier application might use:
+
+* **Bash** – server provisioning, deployment, backups, automation
+* **SQL** – database creation, queries, reporting
+* **Python** – automation, monitoring, AWS SDK (Boto3), log processing
+* **JavaScript (Node.js)** – backend APIs, web applications, automation scripts
+* **YAML** – CI/CD pipelines (GitHub Actions, Jenkins, Kubernetes)
+* **JSON** – configuration files, AWS IAM policies, API responses
+
+Below is a practical mapping of the technologies to Linux administration tasks.
+
+| Topic                 | Bash | SQL | Python | JavaScript |
+| --------------------- | ---- | --- | ------ | ---------- |
+| CLI                   | ✓    |     |        |            |
+| File Management       | ✓    |     | ✓      |            |
+| User Management       | ✓    |     |        |            |
+| Process Management    | ✓    |     | ✓      |            |
+| Vim                   | ✓    |     |        |            |
+| System Administration | ✓    |     | ✓      |            |
+| Automation            | ✓    | ✓   | ✓      | ✓          |
+| Monitoring            | ✓    |     | ✓      | ✓          |
+
+---
+
+# 1. Linux CLI (Bash)
+
+### Create project
+
+```bash
+mkdir ecommerce
+
+cd ecommerce
+
+touch app.py
+
+touch deploy.sh
+
+mkdir logs
+```
+
+### Search files
+
+```bash
+find . -name "*.py"
+```
+
+### Search text
+
+```bash
+grep "ERROR" logs/application.log
+```
+
+### Count log entries
+
+```bash
+wc -l logs/application.log
+```
+
+### Extract column
+
+```bash
+awk '{print $1}' access.log
+```
+
+### Sort
+
+```bash
+sort users.txt
+```
+
+---
+
+# 2. File System Management (Bash)
+
+### Create application folders
+
+```bash
+mkdir -p /opt/company/{app,backup,logs}
+```
+
+### Set ownership
+
+```bash
+sudo chown -R ec2-user:ec2-user /opt/company
+```
+
+### Permissions
+
+```bash
+chmod 755 deploy.sh
+```
+
+### Symbolic Link
+
+```bash
+ln -s /opt/company/logs logs
+```
+
+---
+
+# 3. User Management (Bash)
+
+Create developer
+
+```bash
+sudo useradd developer
+```
+
+Password
+
+```bash
+sudo passwd developer
+```
+
+Create group
+
+```bash
+sudo groupadd devops
+```
+
+Add user
+
+```bash
+sudo usermod -aG devops developer
+```
+
+Grant sudo
+
+```bash
+sudo usermod -aG wheel developer
+```
+
+---
+
+# 4. Process Management (Bash)
+
+Current processes
+
+```bash
+ps aux
+```
+
+CPU usage
+
+```bash
+top
+```
+
+Kill process
+
+```bash
+kill -9 2120
+```
+
+Background
+
+```bash
+python app.py &
+```
+
+Jobs
+
+```bash
+jobs
+```
+
+---
+
+# 5. Vim
+
+Open
+
+```bash
+vim deploy.sh
+```
+
+Insert
+
+```
+i
+```
+
+Save
+
+```
+:w
+```
+
+Quit
+
+```
+:q
+```
+
+Save & Quit
+
+```
+:wq
+```
+
+Replace
+
+```
+:%s/mysql/postgresql/g
+```
+
+---
+
+# 6. System Administration (Bash)
+
+Install packages
+
+Amazon Linux
+
+```bash
+sudo yum install git httpd python3 -y
+```
+
+Ubuntu
+
+```bash
+sudo apt install nginx python3 git -y
+```
+
+Restart service
+
+```bash
+sudo systemctl restart httpd
+```
+
+Enable
+
+```bash
+sudo systemctl enable httpd
+```
+
+Status
+
+```bash
+systemctl status httpd
+```
+
+Network
+
+```bash
+ip addr
+```
+
+Ports
+
+```bash
+ss -tuln
+```
+
+---
+
+# 7. Bash Deployment Script
+
+```bash
+#!/bin/bash
+
+echo "Updating"
+
+sudo yum update -y
+
+echo "Installing Apache"
+
+sudo yum install httpd git -y
+
+echo "Starting Service"
+
+sudo systemctl enable httpd
+
+sudo systemctl start httpd
+
+echo "Copy Website"
+
+cp index.html /var/www/html/
+
+echo "Deployment Complete"
+```
+
+---
+
+# 8. Bash Backup Script
+
+```bash
+#!/bin/bash
+
+DATE=$(date +%F)
+
+tar -czf website-$DATE.tar.gz /var/www/html
+
+aws s3 cp website-$DATE.tar.gz s3://company-backup/
+```
+
+---
+
+# 9. SQL (Database)
+
+Create database
+
+```sql
+CREATE DATABASE ecommerce;
+```
+
+Create customer table
+
+```sql
+CREATE TABLE customers(
+
+id INT PRIMARY KEY,
+
+name VARCHAR(100),
+
+email VARCHAR(100)
+
+);
+```
+
+Insert
+
+```sql
+INSERT INTO customers
+VALUES
+(1,'John','john@gmail.com');
+```
+
+Orders
+
+```sql
+SELECT * FROM customers;
+```
+
+Revenue
+
+```sql
+SELECT SUM(amount)
+FROM orders;
+```
+
+Daily sales
+
+```sql
+SELECT order_date,
+
+SUM(amount)
+
+FROM orders
+
+GROUP BY order_date;
+```
+
+---
+
+# 10. Python Automation
+
+Health Check
+
+```python
+import psutil
+
+print("CPU:", psutil.cpu_percent())
+
+print("RAM:", psutil.virtual_memory().percent)
+
+print("Disk:", psutil.disk_usage('/').percent)
+```
+
+---
+
+Read Log File
+
+```python
+with open("application.log") as f:
+
+    for line in f:
+
+        if "ERROR" in line:
+
+            print(line)
+```
+
+---
+
+AWS S3 Upload
+
+```python
+import boto3
+
+s3=boto3.client("s3")
+
+s3.upload_file("backup.tar.gz",
+
+"company-backup",
+
+"backup.tar.gz")
+```
+
+---
+
+System Information
+
+```python
+import platform
+
+print(platform.system())
+
+print(platform.release())
+```
+
+---
+
+# 11. JavaScript (Node.js)
+
+Simple Server
+
+```javascript
+const http=require("http");
+
+http.createServer((req,res)=>{
+
+res.write("AWS Application");
+
+res.end();
+
+}).listen(3000);
+```
+
+---
+
+Read File
+
+```javascript
+const fs=require("fs");
+
+const data=fs.readFileSync("users.txt","utf8");
+
+console.log(data);
+```
+
+---
+
+API
+
+```javascript
+const express=require("express");
+
+const app=express();
+
+app.get("/",(req,res)=>{
+
+res.send("Welcome");
+
+});
+
+app.listen(3000);
+```
+
+---
+
+# 12. Cron Job
+
+Open
+
+```bash
+crontab -e
+```
+
+Backup every day
+
+```cron
+0 1 * * * /home/ec2-user/backup.sh
+```
+
+Restart Apache
+
+```cron
+0 3 * * 0 systemctl restart httpd
+```
+
+---
+
+# 13. Monitoring Script (Bash)
+
+```bash
+#!/bin/bash
+
+echo "Hostname"
+
+hostname
+
+echo "CPU"
+
+top -bn1 | head -5
+
+echo "Memory"
+
+free -h
+
+echo "Disk"
+
+df -h
+
+echo "Running Services"
+
+systemctl --type=service --state=running
+
+echo "Network"
+
+ss -tuln
+```
+
+---
+
+# 14. Python Log Analyzer
+
+```python
+error_count=0
+
+with open("application.log") as file:
+
+    for line in file:
+
+        if "ERROR" in line:
+
+            error_count+=1
+
+print("Errors:",error_count)
+```
+
+---
+
+# 15. Bash + SQL + Python + JavaScript Workflow
+
+```text
+Developer
+    │
+    ▼
+Git Repository
+    │
+    ▼
+Bash Deployment Script
+    │
+    ▼
+Linux Server (EC2)
+    │
+    ├── Install Packages (Bash)
+    ├── Configure Services (Bash)
+    ├── Start Application (JavaScript/Node.js or Python)
+    ├── Query Database (SQL)
+    ├── Monitor System (Python + Bash)
+    ├── Backup Files (Bash)
+    └── Upload Backup to Amazon S3 (Python/Bash)
+```
+
+## Real-life enterprise examples
+
+* **Bash:** Provision EC2 instances, install software, rotate logs, automate backups, deploy applications.
+* **SQL:** Manage customer records, inventory, payments, and generate business reports.
+* **Python:** Automate AWS operations with Boto3, monitor server health, process logs, integrate with APIs.
+* **JavaScript (Node.js):** Build REST APIs, web dashboards, and real-time services that run on Linux servers.
+* **Combined workflow:** A cron job launches a Bash script every night, which exports data from MySQL (SQL), compresses it (Bash), uploads it to Amazon S3 (Python/Boto3), and sends a completion notification through a Node.js service or API.
+
+This combination of Bash, SQL, Python, and JavaScript represents a common technology stack used by Linux administrators, DevOps engineers, cloud engineers, and backend developers to operate production AWS environments.
+
+
+Python is **not** typically used to replace core Linux administration commands such as `useradd`, `chmod`, `systemctl`, or `ps`; those are native Linux utilities. Instead, Python is commonly used to **automate** those commands, collect information, analyze logs, interact with APIs, and orchestrate administration tasks.
+
+Below are practical Python scripts that align with the topics you listed.
+
+---
+
+# Project Structure
+
+```text
+linux-admin-python/
+
+│── system_info.py
+│── user_management.py
+│── filesystem_manager.py
+│── process_monitor.py
+│── service_manager.py
+│── disk_monitor.py
+│── backup.py
+│── log_analyzer.py
+│── cron_generator.py
+│── package_installer.py
+│── network_monitor.py
+│── cleanup.py
+│── performance_report.py
+│── requirements.txt
+```
+
+Install required packages:
+
+```bash
+pip install psutil pandas tabulate
+```
+
+---
+
+# 1. Linux CLI Automation
+
+```python
+import os
+
+print("Current Directory")
+
+print(os.getcwd())
+
+print("\nFiles")
+
+for file in os.listdir("."):
+    print(file)
+
+print("\nCreating Project Folder")
+
+os.makedirs("project", exist_ok=True)
+
+print("Done")
+```
+
+Real-life:
+
+* Create deployment folders
+* Generate application directories
+* List configuration files
+
+---
+
+# 2. File System Management
+
+```python
+import os
+import shutil
+
+source="sample.txt"
+
+destination="backup/sample.txt"
+
+os.makedirs("backup",exist_ok=True)
+
+shutil.copy(source,destination)
+
+print("File copied")
+```
+
+Delete old logs
+
+```python
+import os
+
+for file in os.listdir("logs"):
+    if file.endswith(".log"):
+        os.remove("logs/"+file)
+```
+
+Real-life:
+
+* Backup configuration files
+* Archive logs
+* Organize deployment folders
+
+---
+
+# 3. Permissions
+
+```python
+import os
+
+os.chmod("deploy.sh",0o755)
+
+print("Permission Changed")
+```
+
+Ownership (requires root privileges)
+
+```python
+import shutil
+shutil.chown("deploy.sh",user="ec2-user",group="ec2-user")
+
+```
+
+Real-life:
+
+* Make deployment scripts executable
+* Change ownership after deployments
+
+---
+
+# 4. User Management
+
+```python
+import subprocess
+
+username="developer"
+
+subprocess.run(["sudo","useradd",username])
+
+print("User Created")
+```
+
+Add to sudo
+
+```python
+import subprocess
+
+subprocess.run([
+"sudo",
+"usermod",
+"-aG",
+"wheel",
+"developer"
+])
+```
+
+List users
+
+```python
+with open("/etc/passwd") as file:
+
+    for line in file:
+
+        print(line.split(":")[0])
+```
+
+Real-life:
+
+* Automatically create developer accounts
+* Onboard new employees
+
+---
+
+# 5. Password Generator
+
+```python
+import secrets
+import string
+
+letters=string.ascii_letters
+
+digits=string.digits
+
+password=''.join(
+secrets.choice(letters+digits)
+for i in range(12))
+
+print(password)
+```
+
+Real-life:
+
+* Temporary passwords
+* Service accounts
+
+---
+
+# 6. Process Monitoring
+
+```python
+import psutil
+
+for process in psutil.process_iter():
+
+    print(process.pid,process.name())
+```
+
+Top CPU process
+
+```python
+import psutil
+
+for process in psutil.process_iter():
+
+    try:
+
+        print(process.pid,
+
+              process.name(),
+
+              process.cpu_percent())
+
+    except:
+
+        pass
+```
+
+Kill process
+
+```python
+import psutil
+
+pid=1234
+
+process=psutil.Process(pid)
+
+process.kill()
+```
+
+Real-life:
+
+* Detect runaway applications
+* Stop crashed processes
+
+---
+
+# 7. Service Management
+
+Start Apache
+
+```python
+import subprocess
+
+subprocess.run([
+"sudo",
+"systemctl",
+"start",
+"httpd"
+])
+```
+
+Restart
+
+```python
+subprocess.run([
+"sudo",
+"systemctl",
+"restart",
+"httpd"
+])
+```
+
+Status
+
+```python
+subprocess.run([
+"systemctl",
+"status",
+"httpd"
+])
+```
+
+Real-life:
+
+* Restart services after deployment
+* Automated recovery
+
+---
+
+# 8. Package Installation
+
+Amazon Linux
+
+```python
+import subprocess
+
+subprocess.run([
+"sudo",
+"yum",
+"install",
+"-y",
+"httpd"
+])
+```
+
+Ubuntu
+
+```python
+subprocess.run([
+"sudo",
+"apt",
+"install",
+"-y",
+"nginx"
+])
+```
+
+Real-life:
+
+* Install software during provisioning
+
+---
+
+# 9. Disk Monitoring
+
+```python
+import psutil
+
+disk=psutil.disk_usage('/')
+
+print("Total",disk.total)
+
+print("Used",disk.used)
+
+print("Free",disk.free)
+
+print("Percent",disk.percent)
+```
+
+Alert
+
+```python
+if disk.percent>80:
+
+    print("Disk Almost Full")
+```
+
+Real-life:
+
+* CloudWatch-style monitoring
+* Storage alerts
+
+---
+
+# 10. Memory Monitoring
+
+```python
+import psutil
+
+memory=psutil.virtual_memory()
+
+print(memory.percent)
+```
+
+Real-life:
+
+* Detect memory pressure
+* Capacity planning
+
+---
+
+# 11. CPU Monitoring
+
+```python
+import psutil
+
+print(psutil.cpu_percent(interval=1))
+```
+
+Per-core
+
+```python
+print(psutil.cpu_percent(percpu=True))
+```
+
+Real-life:
+
+* Auto Scaling triggers
+* Performance diagnostics
+
+---
+
+# 12. Network Monitoring
+
+```python
+import psutil
+
+network=psutil.net_io_counters()
+
+print(network.bytes_sent)
+
+print(network.bytes_recv)
+```
+
+Real-life:
+
+* Monitor bandwidth usage
+* Identify network spikes
+
+---
+
+# 13. Log Analyzer
+
+```python
+errors=0
+
+with open("application.log") as file:
+
+    for line in file:
+
+        if "ERROR" in line:
+
+            errors+=1
+
+print(errors)
+```
+
+Real-life:
+
+* Count application errors
+* Generate daily reports
+
+---
+
+# 14. Backup Automation
+
+```python
+import shutil
+
+import datetime
+
+today=datetime.date.today()
+
+backup="backup-"+str(today)
+
+shutil.make_archive(
+backup,
+'gztar',
+'project')
+```
+
+Real-life:
+
+* Daily website backup
+* Configuration archive
+
+---
+
+# 15. Cron Job Generator
+
+```python
+cron="""
+
+0 2 * * * python3 backup.py
+
+"""
+
+with open("cron.txt","w") as file:
+
+    file.write(cron)
+```
+
+Real-life:
+
+* Automatically generate scheduled tasks
+
+---
+
+# 16. Health Report
+
+```python
+import psutil
+
+print("CPU")
+
+print(psutil.cpu_percent())
+
+print("Memory")
+
+print(psutil.virtual_memory().percent)
+
+print("Disk")
+
+print(psutil.disk_usage('/').percent)
+```
+
+Real-life:
+
+* Server health dashboard
+* Daily status email
+
+---
+
+# 17. Performance Report (CSV)
+
+```python
+import pandas as pd
+
+import psutil
+
+data={
+
+"CPU":[psutil.cpu_percent()],
+
+"Memory":[psutil.virtual_memory().percent],
+
+"Disk":[psutil.disk_usage('/').percent]
+
+}
+
+df=pd.DataFrame(data)
+
+df.to_csv("performance.csv",index=False)
+```
+
+Real-life:
+
+* Store performance metrics
+* Import into reporting tools
+
+---
+
+# Complete Linux Administration Workflow
+
+```text
+Linux Server
+      │
+      ▼
+Python Script Starts
+      │
+      ├── Create Users
+      ├── Set File Permissions
+      ├── Install Packages
+      ├── Start Services
+      ├── Monitor CPU
+      ├── Monitor RAM
+      ├── Monitor Disk
+      ├── Analyze Logs
+      ├── Generate Reports
+      ├── Create Backup
+      └── Schedule Cron Jobs
+```
+
+## Daily Python Projects Used by Linux Administrators
+
+| Project                 | Python Modules       | Real-Life Use                         |
+| ----------------------- | -------------------- | ------------------------------------- |
+| Server Health Dashboard | `psutil`, `pandas`   | Monitor CPU, RAM, Disk                |
+| User Creation Tool      | `subprocess`         | Onboard employees                     |
+| File Backup Utility     | `shutil`, `datetime` | Scheduled backups                     |
+| Log Analyzer            | File I/O             | Troubleshoot application errors       |
+| Package Installer       | `subprocess`         | Provision new servers                 |
+| Service Manager         | `subprocess`         | Start, stop, restart services         |
+| Network Monitor         | `psutil`             | Monitor bandwidth and connections     |
+| Performance Reporter    | `pandas`, `csv`      | Generate daily infrastructure reports |
+| Cleanup Script          | `os`, `shutil`       | Delete temporary and old log files    |
+| Deployment Automation   | `subprocess`, `os`   | Deploy applications to Linux servers  |
+
+These examples represent the kinds of Python automation scripts commonly written by Linux system administrators, DevOps engineers, Site Reliability Engineers (SREs), and Cloud Engineers to manage production Linux servers.
+
