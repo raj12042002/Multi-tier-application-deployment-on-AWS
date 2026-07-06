@@ -1,0 +1,328 @@
+Git Fundamentals - Repository management, branching, merging, conflict resolution
+GitHub Collaboration - Pull requests, code review, issue tracking
+GitLab Integration - CI/CD integration, repository management
+Advanced Git - Rebase, cherry-pick, submodules, hooks
+IDE Integration - Visual Studio Code, Git integration, extensions
+
+Hands-on Projects
+Collaborative project development
+Code review workflow
+Branch management strategy
+
+cloud-engineering-project/
+
+├── .github/
+│   └── workflows/
+│       └── deploy.yml
+│
+├── .gitlab-ci.yml
+│
+├── terraform/
+│   ├── provider.tf
+│   ├── vpc.tf
+│   ├── ec2.tf
+│   └── outputs.tf
+│
+├── aws-cli/
+│   ├── deploy.sh
+│   ├── backup.sh
+│   └── monitor.sh
+│
+├── python/
+│   ├── ec2_manager.py
+│   ├── s3_backup.py
+│   └── cloudwatch.py
+│
+├── kubernetes/
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── ingress.yaml
+│
+├── docker/
+│   ├── Dockerfile
+│   └── docker-compose.yml
+│
+├── docs/
+│   ├── architecture.md
+│   └── deployment.md
+│
+├── README.md
+└── .gitignore
+
+cloud-engineering-project/
+
+├── .github/
+│   └── workflows/
+│       └── deploy.yml
+│
+├── .gitlab-ci.yml
+│
+├── terraform/
+│   ├── provider.tf
+│   ├── vpc.tf
+│   ├── ec2.tf
+│   └── outputs.tf
+│
+├── aws-cli/
+│   ├── deploy.sh
+│   ├── backup.sh
+│   └── monitor.sh
+│
+├── python/
+│   ├── ec2_manager.py
+│   ├── s3_backup.py
+│   └── cloudwatch.py
+│
+├── kubernetes/
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── ingress.yaml
+│
+├── docker/
+│   ├── Dockerfile
+│   └── docker-compose.yml
+│
+├── docs/
+│   ├── architecture.md
+│   └── deployment.md
+│
+├── README.md
+└── .gitignore
+
+17.
+Requirement
+      │
+Create Feature Branch
+      │
+Develop Terraform/Python/Bash Code
+      │
+Test Locally
+      │
+git add
+      │
+git commit
+      │
+git push
+      │
+Open Pull Request
+      │
+Peer Code Review
+      │
+CI/CD Validation
+      │
+Merge to develop
+      │
+Release Branch
+      │
+Merge to main
+      │
+Automatic AWS Deployment
+
+16
+
+main
+│
+├── develop
+│
+├── feature/vpc
+├── feature/ec2
+├── feature/rds
+├── feature/monitoring
+│
+├── release/v1.0
+│
+└── hotfix/security
+
+
+15
+
+git status
+
+git log --oneline
+
+git diff
+
+git blame deploy.sh
+
+13
+
+stages:
+  - validate
+  - deploy
+
+validate:
+  stage: validate
+  script:
+    - terraform validate
+
+deploy:
+  stage: deploy
+  script:
+    - bash aws-cli/deploy.sh
+
+12
+name: AWS Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-east-1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Validate Terraform
+        run: terraform validate
+
+      - name: Deploy
+        run: bash aws-cli/deploy.sh
+
+11
+Developer
+      │
+Feature Branch
+      │
+Push
+      │
+Pull Request
+      │
+Code Review
+      │
+Approval
+      │
+Merge
+      │
+Delete Branch
+
+git checkout -b feature/s3
+
+git add .
+
+git commit -m "Add S3 backup"
+
+git push origin feature/s3
+
+10
+git submodule update --init
+git submodule add https://github.com/company/modules.git
+
+9
+
+#!/bin/bash
+
+terraform fmt
+
+terraform validate
+
+chmod +x .git/hooks/pre-commit
+
+8
+git tag v1.0
+git push origin v1.0
+
+7
+git stash
+git stash pop
+
+6
+git cherry-pick a34fd23
+
+5
+git checkout feature/ec2
+git rebase develop
+git rebase --continue
+
+4
+INSTANCE_TYPE="t2.micro"
+INSTANCE_TYPE="t3.micro"
+<<<<<<< HEAD
+INSTANCE_TYPE="t2.micro"
+=======
+INSTANCE_TYPE="t3.micro"
+>>>>>>> feature
+
+git add .
+
+git commit -m "Resolve merge conflict"
+
+3
+main
+ │
+ ├── develop
+ │      │
+ │      ├── feature/vpc
+ │      ├── feature/ec2
+ │      ├── feature/s3
+ │      └── feature/cloudwatch
+ │
+ └── hotfix/security-group
+
+git checkout -b feature/ec2
+git checkout develop
+git merge feature/ec2
+git branch -d feature/ec2
+
+2
+# AWS Cloud Engineering Project
+
+- Terraform
+- AWS CLI
+- Kubernetes
+- Docker
+- Python Automation
+
+*.pyc
+__pycache__/
+.terraform/
+terraform.tfstate
+.env
+.vscode/
+
+
+
+1. Git Fundamentals
+Initialize Repository
+git init
+Clone Repository
+git clone https://github.com/company/cloud-project.git
+Check Status
+git status
+Add Files
+git add .
+Commit
+git commit -m "Initial AWS infrastructure"
+Push
+git push origin main
+
+
+
+Real-life project stack
+Component	Technology
+Infrastructure	Terraform
+Cloud	AWS
+Automation	Bash
+Cloud SDK	Python (Boto3)
+Backend (optional)	Node.js
+Containers	Docker
+Orchestration	Kubernetes
+Version Control	Git
+Collaboration	GitHub / GitLab
+CI/CD	GitHub Actions / GitLab CI
+IDE	Visual Studio Code
+
+
+
+
+
+
